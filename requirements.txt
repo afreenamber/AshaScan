@@ -1,0 +1,9 @@
+tensorflow
+numpy
+pandas
+opencv-python
+scikit-learn
+matplotlib
+imagehash
+fastapi
+uvicorn
