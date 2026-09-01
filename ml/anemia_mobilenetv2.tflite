@@ -1,0 +1,2 @@
+# Placeholder for the trained TFLite MobileNetV2 model.
+# Replace with the real .tflite binary for edge inference.
