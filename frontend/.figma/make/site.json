@@ -1,0 +1,10 @@
+{
+  "description": "An AI-assisted anemia risk screening tool designed for ASHA workers, enabling quick assessments and actionable insights to improve community health.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
