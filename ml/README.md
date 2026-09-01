@@ -4,12 +4,7 @@ This folder contains machine-learning artifacts and helper code for the
 anemia detection module.
 
 Files
-- `anemia_mobilenetv2.keras` — placeholder for the trained Keras model
-- `anemia_mobilenetv2.tflite` — placeholder for the TFLite model
- - `anemia_mobilenetv2.keras` — trained Keras model artifact
- - `anemia_mobilenetv2.tflite` — trained TensorFlow Lite model artifact
-- `image_quality.py` — image-quality checks (blurry, too dark, overexposed, framing)
-- `inference.py` — `predict_anemia(image_path)` to run quality checks and inference
+ `image_quality.py` — image-quality checks (blurry, too dark, overexposed, framing)
 
 Usage
 
