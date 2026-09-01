@@ -1,19 +1,30 @@
-# ML module
+# ML Module — AshaScan
 
-This folder contains machine-learning artifacts and helper code for the
-anemia detection module.
+This folder contains the machine-learning components for the AshaScan anemia risk-screening system.
 
-Files
- `image_quality.py` — image-quality checks (blurry, too dark, overexposed, framing)
+The ML pipeline takes an eye/conjunctiva image, checks its image quality, and uses a trained MobileNetV2 model to generate an anemia-risk prediction.
 
-Usage
+## Files
 
-Import and call:
+- `anemia_mobilenetv2.keras` — trained MobileNetV2 model in Keras format
+- `anemia_mobilenetv2.tflite` — TensorFlow Lite version of the trained model for lightweight deployment
+- `image_quality.py` — image-quality checks
+- `inference.py` — model loading and prediction pipeline
+- `README.md` — ML module documentation
 
-```python
-from ml.inference import predict_anemia
-res = predict_anemia("path/to/image.jpg")
-```
+## ML Pipeline
 
-The function returns a dict with `status` `success` or `retake` and additional
-fields per the project specification.
+```text
+Input Image
+     ↓
+Image Quality Check
+     ↓
+Blur / Brightness / Framing Detection
+     ↓
+Image Preprocessing
+     ↓
+MobileNetV2 Model
+     ↓
+Anemia Probability
+     ↓
+Risk Level + Confidence
