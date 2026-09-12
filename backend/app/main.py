@@ -397,12 +397,20 @@ async def get_ai_prediction(
             "ml-anemia-model",
         )
 
-    # --------------------------------------------------------
+       # --------------------------------------------------------
     # LOCAL MODEL (in-process, no separate AI microservice)
     # --------------------------------------------------------
 
-    local_result = ml_bridge.predict_from_bytes(
-        image_path.read_bytes()
+    # ml_bridge.predict_from_bytes() is a blocking, CPU-heavy TensorFlow call.
+    # Awaiting it directly here would freeze this entire async server for
+    # every other request (dashboard fetches, other users, etc.) for the
+    # full duration of model loading/inference. run_in_threadpool hands it
+    # off to a worker thread so the event loop stays free.
+    from starlette.concurrency import run_in_threadpool
+
+    local_result = await run_in_threadpool(
+        ml_bridge.predict_from_bytes,
+        image_path.read_bytes(),
     )
 
     if local_result is not None:

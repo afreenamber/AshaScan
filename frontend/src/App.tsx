@@ -952,12 +952,24 @@ function AnalysisScreen({
   // only the first invocation for a given mount ever calls the API.
   const submittedRef = useRef(false);
 
+    // onDone/onError are recreated on every render of the parent App
+  // component (they're plain inline functions, not useCallback-wrapped).
+  // If they were effect dependencies, ANY unrelated re-render of App
+  // while this screen is showing would tear down and "restart" this
+  // effect — cancelling the in-flight request's closure via `cancelled
+  // = true` before it resolves, even though submittedRef correctly
+  // blocks the actual duplicate network call. The result: the real
+  // request finishes successfully on the server, but nothing is left
+  // to call onDone() with it. Refs let us always call the *latest*
+  // version of these callbacks without making them dependencies.
+  const onDoneRef = useRef(onDone);
+  const onErrorRef = useRef(onError);
+  onDoneRef.current = onDone;
+  onErrorRef.current = onError;
+
   useEffect(() => {
     const t1 = setTimeout(() => setTick(1), 500);
     const t2 = setTimeout(() => setTick(2), 1100);
-    // If it's still going after 6s, it's very likely a cold model load
-    // (first screening after a backend restart) rather than a freeze —
-    // say so, instead of leaving a bare spinner that looks stuck.
     const slow = setTimeout(() => setShowSlowNotice(true), 6000);
 
     let cancelled = false;
@@ -969,22 +981,22 @@ function AnalysisScreen({
 
     (async () => {
       if (!patientId || !file) {
-        onError(lang === "en" ? "Missing patient or photo — please start again." : "मरीज़ या फ़ोटो नहीं मिली — दोबारा कोशिश करें।");
+        onErrorRef.current(lang === "en" ? "Missing patient or photo — please start again." : "मरीज़ या फ़ोटो नहीं मिली — दोबारा कोशिश करें।");
         return;
       }
       try {
         const result = await api.submitScreening(patientId, file, "eyelid");
         if (cancelled) return;
         setTick(3);
-        setTimeout(() => onDone(api.mapRiskLevel(result.risk_level)), 500);
+        setTimeout(() => onDoneRef.current(api.mapRiskLevel(result.risk_level)), 500);
       } catch (e) {
         if (cancelled) return;
-        onError(e instanceof api.ApiError ? e.message : (lang === "en" ? "Could not reach the server." : "सर्वर से संपर्क नहीं हो सका।"));
+        onErrorRef.current(e instanceof api.ApiError ? e.message : (lang === "en" ? "Could not reach the server." : "सर्वर से संपर्क नहीं हो सका।"));
       }
     })();
 
     return () => { cancelled = true; [t1, t2, slow].forEach(clearTimeout); };
-  }, [patientId, file, lang, onDone, onError]);
+  }, [patientId, file, lang]);
 
   const steps = lang === "en"
     ? ["Photo received", "Checking image", "Preparing result"]
