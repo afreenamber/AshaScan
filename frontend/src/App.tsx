@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import * as api from "./api";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -438,6 +439,26 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
 
 function LoginScreen({ lang, setLang, onLogin }: { lang: Lang; setLang: (l: Lang) => void; onLogin: () => void }) {
   const [mobile, setMobile] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!mobile || !password) {
+      setError(lang === "en" ? "Enter your mobile number and password." : "मोबाइल नंबर और पासवर्ड दर्ज करें।");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      await api.login(mobile, password);
+      onLogin();
+    } catch (e) {
+      setError(e instanceof api.ApiError ? e.message : (lang === "en" ? "Could not reach the server." : "सर्वर से संपर्क नहीं हो सका।"));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div style={{ background: C.ivory }} className="absolute inset-0 flex flex-col overflow-auto">
@@ -462,27 +483,24 @@ function LoginScreen({ lang, setLang, onLogin }: { lang: Lang; setLang: (l: Lang
           onChange={setMobile}
         />
 
-        <div className="flex flex-col gap-2">
-          <div className="flex justify-between items-center">
-            <label style={{ color: C.charcoalMid, fontFamily: "Outfit" }} className="text-base font-semibold">
-              {lang === "en" ? "OTP" : "ओटीपी"}
-            </label>
-            <button style={{ color: C.teal, fontFamily: "Outfit" }} className="text-sm font-bold">
-              {lang === "en" ? "Send OTP" : "OTP भेजें"}
-            </button>
-          </div>
-          <div className="flex gap-3">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} style={{ background: "#FFFFFF", border: `2px solid ${C.border}` }}
-                className="flex-1 h-14 rounded-2xl flex items-center justify-center">
-                <div style={{ background: C.border }} className="w-2.5 h-2.5 rounded-full" />
-              </div>
-            ))}
-          </div>
-        </div>
+        <InputField
+          label={lang === "en" ? "Password" : "पासवर्ड"}
+          placeholder={lang === "en" ? "Enter your password" : "अपना पासवर्ड दर्ज करें"}
+          type="password"
+          value={password}
+          onChange={setPassword}
+        />
+
+        {error && (
+          <p style={{ color: C.red, fontFamily: "Noto Sans" }} className="text-sm">{error}</p>
+        )}
 
         <div className="pt-2">
-          <PrimaryButton label={lang === "en" ? "Continue →" : "आगे बढ़ें →"} onClick={onLogin} />
+          <PrimaryButton
+            label={loading ? (lang === "en" ? "Signing in…" : "साइन इन हो रहा है…") : (lang === "en" ? "Continue →" : "आगे बढ़ें →")}
+            onClick={handleSubmit}
+            disabled={loading}
+          />
         </div>
 
         <div className="mt-auto pt-6 flex flex-col items-center gap-1.5">
@@ -587,10 +605,14 @@ function DashboardScreen({
 
 // ─── STEP 1 — Patient Details ─────────────────────────────────────────────────
 
-function ScreeningStep1({ lang, onBack, onNext }: { lang: Lang; onBack: () => void; onNext: () => void }) {
+function ScreeningStep1({ lang, onBack, onNext }: {
+  lang: Lang; onBack: () => void;
+  onNext: (patient: { name: string; age: string; sex: string; village: string }) => void;
+}) {
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
   const [sex, setSex] = useState("");
+  const [village, setVillage] = useState("");
 
   return (
     <div style={{ background: C.ivory }} className="absolute inset-0 flex flex-col">
@@ -649,13 +671,16 @@ function ScreeningStep1({ lang, onBack, onNext }: { lang: Lang; onBack: () => vo
         <InputField
           label={lang === "en" ? "Village / Area" : "गांव / इलाका"}
           placeholder={lang === "en" ? "Village or ward name" : "गांव या वार्ड का नाम"}
-          value=""
-          onChange={() => {}}
+          value={village}
+          onChange={setVillage}
         />
       </div>
 
       <div style={{ background: C.ivory, borderTop: `1.5px solid ${C.border}` }} className="px-5 py-4">
-        <PrimaryButton label={t("continueBtn", lang)} onClick={onNext} />
+        <PrimaryButton
+          label={t("continueBtn", lang)}
+          onClick={() => onNext({ name, age, sex, village })}
+        />
       </div>
     </div>
   );
@@ -663,9 +688,11 @@ function ScreeningStep1({ lang, onBack, onNext }: { lang: Lang; onBack: () => vo
 
 // ─── STEP 2 — Camera ──────────────────────────────────────────────────────────
 
-function CameraScreen({ lang, onBack, onNext }: { lang: Lang; onBack: () => void; onNext: () => void }) {
+function CameraScreen({ lang, onBack, onNext }: { lang: Lang; onBack: () => void; onNext: (file: File) => void }) {
   const [checks, setChecks] = useState({ light: false, clear: false, position: false });
   const [taken, setTaken] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const allGood = checks.light && checks.clear && checks.position;
 
   useEffect(() => {
@@ -675,13 +702,22 @@ function CameraScreen({ lang, onBack, onNext }: { lang: Lang; onBack: () => void
     return () => [t1, t2, t3].forEach(clearTimeout);
   }, []);
 
-  const handleTake = () => {
-    if (!taken) { setTaken(true); return; }
-    onNext();
+  useEffect(() => {
+    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
+  }, [previewUrl]);
+
+  const handleFileSelected = (selected: File | undefined) => {
+    if (!selected) return;
+    setFile(selected);
+    setPreviewUrl(URL.createObjectURL(selected));
+    setTaken(true);
   };
 
   const handleRetake = () => {
     setTaken(false);
+    setFile(null);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
     setChecks({ light: false, clear: false, position: false });
     setTimeout(() => {
       setTimeout(() => setChecks((c) => ({ ...c, light: true })), 700);
@@ -716,44 +752,51 @@ function CameraScreen({ lang, onBack, onNext }: { lang: Lang; onBack: () => void
 
       {/* Camera viewfinder */}
       <div className="flex-1 relative flex items-center justify-center px-5">
-        {/* Simulated camera feed */}
         <div style={{ background: "#2A2A2A", borderRadius: "16px", width: "100%", maxWidth: "340px", aspectRatio: "3/4" }}
           className="relative overflow-hidden flex items-center justify-center">
-          {/* Scan lines decoration */}
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} style={{ top: `${i * 14}%`, background: "rgba(255,255,255,0.025)" }}
-              className="absolute left-0 right-0 h-px" />
-          ))}
-
-          {/* Eye/face positioning guide */}
-          <div style={{ border: "2.5px solid rgba(255,255,255,0.8)", borderRadius: "12px", width: "65%", aspectRatio: "1", position: "relative" }}>
-            {/* Corner accents */}
-            {[["top-0 left-0", "border-t-2 border-l-2"], ["top-0 right-0", "border-t-2 border-r-2"], ["bottom-0 left-0", "border-b-2 border-l-2"], ["bottom-0 right-0", "border-b-2 border-r-2"]].map(([pos, border]) => (
-              <div key={pos} style={{ borderColor: C.teal }} className={`absolute w-5 h-5 ${pos} ${border}`} />
-            ))}
-          </div>
-
-          {/* Instruction */}
-          <div style={{ background: "rgba(0,0,0,0.6)", borderRadius: "8px" }}
-            className="absolute bottom-4 left-4 right-4 px-3 py-2 text-center">
-            <p style={{ color: "#FFFFFF", fontFamily: "Noto Sans" }} className="text-sm">
-              {lang === "en" ? "Place the eye inside the guide" : "आंख को बॉक्स के अंदर रखें"}
-            </p>
-          </div>
+          {/* Real photo preview once captured */}
+          {previewUrl ? (
+            <img src={previewUrl} alt="Captured" className="absolute inset-0 w-full h-full object-cover" />
+          ) : (
+            <>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} style={{ top: `${i * 14}%`, background: "rgba(255,255,255,0.025)" }}
+                  className="absolute left-0 right-0 h-px" />
+              ))}
+              <div style={{ border: "2.5px solid rgba(255,255,255,0.8)", borderRadius: "12px", width: "65%", aspectRatio: "1", position: "relative" }}>
+                {[["top-0 left-0", "border-t-2 border-l-2"], ["top-0 right-0", "border-t-2 border-r-2"], ["bottom-0 left-0", "border-b-2 border-l-2"], ["bottom-0 right-0", "border-b-2 border-r-2"]].map(([pos, border]) => (
+                  <div key={pos} style={{ borderColor: C.teal }} className={`absolute w-5 h-5 ${pos} ${border}`} />
+                ))}
+              </div>
+              <div style={{ background: "rgba(0,0,0,0.6)", borderRadius: "8px" }}
+                className="absolute bottom-4 left-4 right-4 px-3 py-2 text-center">
+                <p style={{ color: "#FFFFFF", fontFamily: "Noto Sans" }} className="text-sm">
+                  {lang === "en" ? "Place the eye inside the guide" : "आंख को बॉक्स के अंदर रखें"}
+                </p>
+              </div>
+            </>
+          )}
 
           {taken && (
-            <div style={{ background: "rgba(45,122,79,0.3)" }} className="absolute inset-0 flex items-center justify-center">
-              <div style={{ background: C.green, borderRadius: "50%" }} className="w-16 h-16 flex items-center justify-center">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-              </div>
+            <div style={{ position: "absolute", top: 10, right: 10, background: C.green, borderRadius: "50%" }} className="w-9 h-9 flex items-center justify-center">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
           )}
         </div>
       </div>
 
+      {/* Hidden native input — on phones this opens the camera app directly */}
+      <input
+        id="ashascan-camera-input"
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: "none" }}
+        onChange={(e) => handleFileSelected(e.target.files?.[0])}
+      />
+
       {/* Bottom panel */}
       <div style={{ background: C.ivory, borderRadius: "24px 24px 0 0" }} className="px-5 pt-5 pb-8 flex flex-col gap-4">
-        {/* Quality checks */}
         <div className="flex flex-col gap-2">
           {checkItems.map(({ key, en, hi }) => {
             const ok = checks[key as keyof typeof checks];
@@ -775,18 +818,18 @@ function CameraScreen({ lang, onBack, onNext }: { lang: Lang; onBack: () => void
           })}
         </div>
 
-        {taken ? (
+        {taken && file ? (
           <div className="flex flex-col gap-3">
             <PrimaryButton
               label={lang === "en" ? "Use this photo →" : "यह फ़ोटो इस्तेमाल करें →"}
-              onClick={onNext}
+              onClick={() => onNext(file)}
             />
             <SecondaryButton label={t("retakePhoto", lang)} onClick={handleRetake} />
           </div>
         ) : (
           <PrimaryButton
             label={t("takePhoto", lang)}
-            onClick={handleTake}
+            onClick={() => document.getElementById("ashascan-camera-input")?.click()}
             icon={<CameraIcon size={22} />}
             disabled={!allGood}
           />
@@ -798,16 +841,41 @@ function CameraScreen({ lang, onBack, onNext }: { lang: Lang; onBack: () => void
 
 // ─── STEP 3 — Analysis ────────────────────────────────────────────────────────
 
-function AnalysisScreen({ lang, onDone }: { lang: Lang; onDone: () => void }) {
+function AnalysisScreen({
+  lang, patientId, file, onDone, onError,
+}: {
+  lang: Lang;
+  patientId: number | null;
+  file: File | null;
+  onDone: (risk: RiskLevel) => void;
+  onError: (message: string) => void;
+}) {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    const t1 = setTimeout(() => setTick(1), 800);
-    const t2 = setTimeout(() => setTick(2), 1800);
-    const t3 = setTimeout(() => setTick(3), 2800);
-    const done = setTimeout(onDone, 3600);
-    return () => [t1, t2, t3, done].forEach(clearTimeout);
-  }, [onDone]);
+    const t1 = setTimeout(() => setTick(1), 500);
+    const t2 = setTimeout(() => setTick(2), 1100);
+
+    let cancelled = false;
+
+    (async () => {
+      if (!patientId || !file) {
+        onError(lang === "en" ? "Missing patient or photo — please start again." : "मरीज़ या फ़ोटो नहीं मिली — दोबारा कोशिश करें।");
+        return;
+      }
+      try {
+        const result = await api.submitScreening(patientId, file, "eyelid");
+        if (cancelled) return;
+        setTick(3);
+        setTimeout(() => onDone(api.mapRiskLevel(result.risk_level)), 500);
+      } catch (e) {
+        if (cancelled) return;
+        onError(e instanceof api.ApiError ? e.message : (lang === "en" ? "Could not reach the server." : "सर्वर से संपर्क नहीं हो सका।"));
+      }
+    })();
+
+    return () => { cancelled = true; [t1, t2].forEach(clearTimeout); };
+  }, [patientId, file, lang, onDone, onError]);
 
   const steps = lang === "en"
     ? ["Photo received", "Checking image", "Preparing result"]
@@ -1284,6 +1352,10 @@ export default function App() {
   const [sync] = useState<SyncState>("synced");
   const [resultLevel, setResultLevel] = useState<RiskLevel>("possible");
 
+  const [currentPatientId, setCurrentPatientId] = useState<number | null>(null);
+  const [capturedFile, setCapturedFile] = useState<File | null>(null);
+  const [screeningError, setScreeningError] = useState<string | null>(null);
+
   const go = (s: Screen) => setScreen(s);
 
   const handleTabChange = (tab: string) => {
@@ -1294,49 +1366,64 @@ export default function App() {
     if (tab === "profile")   go("profile");
   };
 
+  const handlePatientDetailsSubmitted = async (patient: { name: string; age: string; sex: string; village: string }) => {
+    setScreeningError(null);
+    try {
+      const created = await api.createPatient({
+        name: patient.name || "Unnamed patient",
+        age: parseInt(patient.age, 10) || 0,
+        gender: patient.sex || undefined,
+        village: patient.village || undefined,
+      });
+      setCurrentPatientId(created.id);
+      go("step2-camera");
+    } catch (e) {
+      setScreeningError(e instanceof api.ApiError ? e.message : "Could not save patient details. Check your connection.");
+    }
+  };
+
+  const handlePhotoCaptured = (file: File) => {
+    setCapturedFile(file);
+    go("step3-analysis");
+  };
+
+  const handleAnalysisDone = (risk: RiskLevel) => {
+    setResultLevel(risk);
+    go(`result-${risk}` as Screen);
+  };
+
+  const handleAnalysisError = (message: string) => {
+    setScreeningError(message);
+    go("step2-camera");
+  };
+
   const showNav = ["home", "patients", "followups", "profile"].includes(screen);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: C.ivoryDark }}>
+      {screeningError && screen !== "step3-analysis" && (
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 50, background: C.redDark, color: "#FFFFFF", fontFamily: "Noto Sans" }}
+          className="px-4 py-3 text-sm flex items-center justify-between gap-3">
+          <span>{screeningError}</span>
+          <button onClick={() => setScreeningError(null)} style={{ color: "#FFFFFF" }} className="font-bold">✕</button>
+        </div>
+      )}
+
       {screen === "splash"         && <SplashScreen onDone={() => go("login")} />}
       {screen === "login"          && <LoginScreen lang={lang} setLang={setLang} onLogin={() => { go("home"); setActiveTab("home"); }} />}
       {screen === "home"           && <DashboardScreen lang={lang} setLang={setLang} sync={sync} onStartScreening={() => go("step1")} onViewPatient={() => go("patient-profile")} />}
-      {screen === "step1"          && <ScreeningStep1 lang={lang} onBack={() => go("home")} onNext={() => go("step2-camera")} />}
-      {screen === "step2-camera"   && <CameraScreen lang={lang} onBack={() => go("step1")} onNext={() => go("step3-analysis")} />}
-      {screen === "step3-analysis" && <AnalysisScreen lang={lang} onDone={() => go(`result-${resultLevel}` as Screen)} />}
+      {screen === "step1"          && <ScreeningStep1 lang={lang} onBack={() => go("home")} onNext={handlePatientDetailsSubmitted} />}
+      {screen === "step2-camera"   && <CameraScreen lang={lang} onBack={() => go("step1")} onNext={handlePhotoCaptured} />}
+      {screen === "step3-analysis" && <AnalysisScreen lang={lang} patientId={currentPatientId} file={capturedFile} onDone={handleAnalysisDone} onError={handleAnalysisError} />}
       {screen === "result-low"     && <RiskResultScreen level="low"      lang={lang} onSave={() => go("home")} onHome={() => go("home")} onFollowup={() => go("followups")} />}
       {screen === "result-possible"&& <RiskResultScreen level="possible" lang={lang} onSave={() => go("home")} onHome={() => go("home")} onFollowup={() => go("followups")} />}
       {screen === "result-high"    && <RiskResultScreen level="high"     lang={lang} onSave={() => go("home")} onHome={() => go("home")} onFollowup={() => go("followups")} />}
       {screen === "patients"       && <PatientsScreen lang={lang} onSelect={() => go("patient-profile")} />}
       {screen === "patient-profile"&& <PatientProfileScreen lang={lang} onBack={() => setScreen(activeTab === "patients" ? "patients" : "home")} />}
       {screen === "followups"      && <FollowUpsScreen lang={lang} sync={sync} />}
-      {screen === "profile"        && <ProfileScreen lang={lang} setLang={setLang} sync={sync} onLogout={() => go("login")} />}
+      {screen === "profile"        && <ProfileScreen lang={lang} setLang={setLang} sync={sync} onLogout={() => { api.logout(); go("login"); }} />}
 
       {showNav && <BottomNav active={activeTab} onChange={handleTabChange} lang={lang} />}
-
-      {/* Demo: result variant switcher — shown on result screens */}
-      {(screen === "result-low" || screen === "result-possible" || screen === "result-high") && (
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: C.charcoal, display: "flex", gap: "0" }}>
-          {(["low", "possible", "high"] as RiskLevel[]).map((l) => (
-            <button
-              key={l}
-              onClick={() => { setResultLevel(l); go(`result-${l}` as Screen); }}
-              style={{
-                flex: 1,
-                padding: "10px 4px",
-                background: resultLevel === l ? C.teal : "transparent",
-                color: "#FFFFFF",
-                fontFamily: "Outfit, sans-serif",
-                fontSize: "11px",
-                fontWeight: "700",
-                borderRight: l !== "high" ? `1px solid rgba(255,255,255,0.1)` : "none",
-              }}
-            >
-              {l === "low" ? "🟢 Low" : l === "possible" ? "🟡 Possible" : "🔴 High"}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

@@ -10,6 +10,8 @@ from pathlib import Path
 
 import httpx
 
+from . import ml_bridge
+
 from dotenv import load_dotenv
 
 from fastapi import (
@@ -383,6 +385,20 @@ async def get_ai_prediction(
             confidence,
             "ml-anemia-model",
         )
+
+    # --------------------------------------------------------
+    # LOCAL MODEL (in-process, no separate AI microservice)
+    # --------------------------------------------------------
+
+    local_result = ml_bridge.predict_from_bytes(
+        image_path.read_bytes()
+    )
+
+    if local_result is not None:
+
+        risk_level, confidence, model_version = local_result
+
+        return (risk_level, confidence, model_version)
 
     # --------------------------------------------------------
     # NO ML SERVICE + DEMO DISABLED
