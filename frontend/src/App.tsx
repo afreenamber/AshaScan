@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import * as api from "./api";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -942,12 +942,25 @@ function AnalysisScreen({
   onError: (message: string) => void;
 }) {
   const [tick, setTick] = useState(0);
+  // React.StrictMode (main.tsx) intentionally double-invokes effects in
+  // dev mode to surface bugs. Without this guard, that double-invoke was
+  // silently submitting every screening TWICE — creating two Screening
+  // rows and two Referrals per photo. The `cancelled` flag below only
+  // stopped the second invocation's *UI update*, not the actual network
+  // request, which had already reached the server. This ref makes sure
+  // only the first invocation for a given mount ever calls the API.
+  const submittedRef = useRef(false);
 
   useEffect(() => {
     const t1 = setTimeout(() => setTick(1), 500);
     const t2 = setTimeout(() => setTick(2), 1100);
 
     let cancelled = false;
+
+    if (submittedRef.current) {
+      return () => { [t1, t2].forEach(clearTimeout); };
+    }
+    submittedRef.current = true;
 
     (async () => {
       if (!patientId || !file) {
