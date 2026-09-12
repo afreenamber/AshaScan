@@ -127,6 +127,17 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def preload_ml_model_on_startup():
+    """Load the anemia model once at boot instead of on someone's first
+    screening request. Watch this terminal after a restart — if the model
+    is large, this line can take a while to print; that's expected, and
+    much better than a user staring at a frozen 'Preparing result' screen."""
+    print("[startup] Preloading anemia model (this can take a while on first boot)...")
+    ml_bridge.preload()
+    print("[startup] Ready.")
+
+
 app.mount(
     "/uploads",
     StaticFiles(

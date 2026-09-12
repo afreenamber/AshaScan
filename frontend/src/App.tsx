@@ -942,6 +942,7 @@ function AnalysisScreen({
   onError: (message: string) => void;
 }) {
   const [tick, setTick] = useState(0);
+  const [showSlowNotice, setShowSlowNotice] = useState(false);
   // React.StrictMode (main.tsx) intentionally double-invokes effects in
   // dev mode to surface bugs. Without this guard, that double-invoke was
   // silently submitting every screening TWICE — creating two Screening
@@ -954,11 +955,15 @@ function AnalysisScreen({
   useEffect(() => {
     const t1 = setTimeout(() => setTick(1), 500);
     const t2 = setTimeout(() => setTick(2), 1100);
+    // If it's still going after 6s, it's very likely a cold model load
+    // (first screening after a backend restart) rather than a freeze —
+    // say so, instead of leaving a bare spinner that looks stuck.
+    const slow = setTimeout(() => setShowSlowNotice(true), 6000);
 
     let cancelled = false;
 
     if (submittedRef.current) {
-      return () => { [t1, t2].forEach(clearTimeout); };
+      return () => { [t1, t2, slow].forEach(clearTimeout); };
     }
     submittedRef.current = true;
 
@@ -978,7 +983,7 @@ function AnalysisScreen({
       }
     })();
 
-    return () => { cancelled = true; [t1, t2].forEach(clearTimeout); };
+    return () => { cancelled = true; [t1, t2, slow].forEach(clearTimeout); };
   }, [patientId, file, lang, onDone, onError]);
 
   const steps = lang === "en"
@@ -999,7 +1004,11 @@ function AnalysisScreen({
             {t("checking", lang)}
           </h2>
           <p style={{ color: C.charcoalMid, fontFamily: "Noto Sans" }} className="text-base mt-2">
-            {lang === "en" ? "You can wait — this takes a few seconds." : "थोड़ा रुकें, बस कुछ सेकंड।"}
+            {showSlowNotice
+              ? (lang === "en"
+                  ? "Still working — the first check after a restart can take up to a minute."
+                  : "अभी भी काम हो रहा है — रीस्टार्ट के बाद पहली जांच में एक मिनट तक लग सकता है।")
+              : (lang === "en" ? "You can wait — this takes a few seconds." : "थोड़ा रुकें, बस कुछ सेकंड।")}
           </p>
         </div>
       </div>

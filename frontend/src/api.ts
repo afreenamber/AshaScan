@@ -145,11 +145,30 @@ export async function submitScreening(
   form.append("image", imageFile);
   form.append("capture_site", captureSite);
 
-  const res = await fetch(`${API_URL}/patients/${patientId}/screenings`, {
-    method: "POST",
-    headers: authHeaders(), // do NOT set Content-Type manually — browser sets multipart boundary
-    body: form,
-  });
+  // The very first screening after a backend restart can be slow (the ML
+  // model loads lazily unless preloaded), so this timeout is generous —
+  // but it guarantees the UI eventually shows an error instead of
+  // spinning forever if the server really is unreachable.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90_000);
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/patients/${patientId}/screenings`, {
+      method: "POST",
+      headers: authHeaders(), // do NOT set Content-Type manually — browser sets multipart boundary
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new ApiError("Server took too long to respond. It may still be starting up — please try again in a moment.", 0);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
   if (!res.ok) throw new ApiError(await parseErrorDetail(res), res.status);
   return res.json();
 }

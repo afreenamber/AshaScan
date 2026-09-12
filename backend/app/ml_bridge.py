@@ -18,6 +18,22 @@ _model = None
 _load_attempted = False
 
 
+def preload():
+    """Force the model to load right now, instead of on the first user's
+    screening request. Call this once at server startup. Loading
+    TensorFlow + this ~22MB Keras model is the slow part (can take
+    20-60+ seconds on a constrained CPU like a Codespace) — doing it at
+    boot means that cost shows up in the startup logs, not as a frozen
+    'Preparing result' screen on someone's first screening."""
+    model = _get_model()
+    if model is not None:
+        print(f"[ml_bridge] Model preloaded successfully from {MODEL_PATH}")
+    else:
+        print(f"[ml_bridge] WARNING: could not preload model from {MODEL_PATH} — "
+              f"screenings will fall back to DEMO_MODE if enabled, or fail.")
+    return model is not None
+
+
 def is_available() -> bool:
     """Cheap check without forcing a load — used to decide whether to even try."""
     return Path(MODEL_PATH).exists()
