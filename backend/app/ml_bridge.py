@@ -11,7 +11,7 @@ from typing import Optional
 
 import numpy as np
 
-from .ml.config import MODEL_PATH
+from .ml.config import MODEL_PATH, IMAGE_SIZE
 from .ml.preprocess import preprocess_image
 
 _model = None
@@ -19,19 +19,26 @@ _load_attempted = False
 
 
 def preload():
-    """Force the model to load right now, instead of on the first user's
-    screening request. Call this once at server startup. Loading
-    TensorFlow + this ~22MB Keras model is the slow part (can take
-    20-60+ seconds on a constrained CPU like a Codespace) — doing it at
-    boot means that cost shows up in the startup logs, not as a frozen
-    'Preparing result' screen on someone's first screening."""
     model = _get_model()
-    if model is not None:
-        print(f"[ml_bridge] Model preloaded successfully from {MODEL_PATH}")
-    else:
+    if model is None:
         print(f"[ml_bridge] WARNING: could not preload model from {MODEL_PATH} — "
               f"screenings will fall back to DEMO_MODE if enabled, or fail.")
-    return model is not None
+        return False
+
+    print(f"[ml_bridge] Model loaded from {MODEL_PATH}, running warm-up prediction...")
+    try:
+        import time
+        t0 = time.time()
+        dummy = np.zeros((1, *IMAGE_SIZE, 3), dtype=np.float32)
+        model.predict(dummy, verbose=0)
+        print(f"[ml_bridge] Warm-up prediction complete in {time.time() - t0:.1f}s "
+              f"— model preloaded successfully.")
+    except Exception as e:
+        print(f"[ml_bridge] WARNING: warm-up prediction failed: {e} "
+              f"— first real screening may still be slow.")
+        return False
+
+    return True
 
 
 def is_available() -> bool:
