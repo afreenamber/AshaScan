@@ -58,13 +58,17 @@ def _get_model():
     return _model
 
 
+import os
+
+# These control where the 3-tier Green/Yellow/Red split falls on the raw
+RED_THRESHOLD = float(os.getenv("RISK_RED_THRESHOLD", "0.70"))
+YELLOW_THRESHOLD = float(os.getenv("RISK_YELLOW_THRESHOLD", "0.55"))
+
+
 def _risk_bucket(anemic_probability: float) -> str:
-    # Vocabulary must match the rest of the backend (referral
-    # auto-creation checks for "yellow"/"red") and the frontend
-    # (mapRiskLevel only recognizes "green"/"yellow"/"red").
-    if anemic_probability > 0.7:
+    if anemic_probability > RED_THRESHOLD:
         return "red"
-    if anemic_probability > 0.4:
+    if anemic_probability > YELLOW_THRESHOLD:
         return "yellow"
     return "green"
 
