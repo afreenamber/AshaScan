@@ -43,11 +43,14 @@ def _get_model():
 
 
 def _risk_bucket(anemic_probability: float) -> str:
+    # Vocabulary must match the rest of the backend (referral
+    # auto-creation checks for "yellow"/"red") and the frontend
+    # (mapRiskLevel only recognizes "green"/"yellow"/"red").
     if anemic_probability > 0.7:
-        return "high"
+        return "red"
     if anemic_probability > 0.4:
-        return "moderate"
-    return "low"
+        return "yellow"
+    return "green"
 
 
 def predict_from_bytes(image_bytes: bytes) -> Optional[tuple[str, float, str]]:

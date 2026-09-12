@@ -66,6 +66,20 @@ export function isLoggedIn(): boolean {
   return !!localStorage.getItem("ashascan_token");
 }
 
+export interface CurrentUser {
+  id: number;
+  name: string;
+  phone: string;
+  role: "ASHA" | "ANM" | "PHC";
+  village?: string | null;
+}
+
+export async function getCurrentUser(): Promise<CurrentUser> {
+  const res = await fetch(`${API_URL}/auth/me`, { headers: authHeaders() });
+  if (!res.ok) throw new ApiError(await parseErrorDetail(res), res.status);
+  return res.json();
+}
+
 // ─── Patients ───────────────────────────────────────────────────────────────
 
 export interface Patient {
@@ -95,6 +109,18 @@ export async function createPatient(input: {
 export async function listPatients(search?: string): Promise<Patient[]> {
   const qs = search ? `?search=${encodeURIComponent(search)}` : "";
   const res = await fetch(`${API_URL}/patients${qs}`, { headers: authHeaders() });
+  if (!res.ok) throw new ApiError(await parseErrorDetail(res), res.status);
+  return res.json();
+}
+
+export async function getPatient(id: number): Promise<Patient> {
+  const res = await fetch(`${API_URL}/patients/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new ApiError(await parseErrorDetail(res), res.status);
+  return res.json();
+}
+
+export async function getPatientScreenings(id: number): Promise<ScreeningResult[]> {
+  const res = await fetch(`${API_URL}/patients/${id}/screenings`, { headers: authHeaders() });
   if (!res.ok) throw new ApiError(await parseErrorDetail(res), res.status);
   return res.json();
 }
@@ -133,6 +159,27 @@ export function mapRiskLevel(backendRisk: "green" | "yellow" | "red"): "low" | "
   if (backendRisk === "green") return "low";
   if (backendRisk === "yellow") return "possible";
   return "high";
+}
+
+// ─── Referrals ──────────────────────────────────────────────────────────────
+
+export interface Referral {
+  id: number;
+  screening_id: number;
+  patient_id: number;
+  assigned_to?: number | null;
+  status: "PENDING" | "REFERRED" | "OVERDUE" | "RESOLVED";
+  due_date: string;
+  resolved_at?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
+
+export async function listReferrals(status?: string): Promise<Referral[]> {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  const res = await fetch(`${API_URL}/referrals${qs}`, { headers: authHeaders() });
+  if (!res.ok) throw new ApiError(await parseErrorDetail(res), res.status);
+  return res.json();
 }
 
 // ─── Dashboard ──────────────────────────────────────────────────────────────
