@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Union
 
 import numpy as np
-import tensorflow as tf
 from PIL import Image
 
 from .config import IMAGE_SIZE
@@ -41,6 +40,7 @@ def preprocess_image(
 
     rgb = np.asarray(pil_img).astype(np.float32)
 
-    processed = tf.keras.applications.mobilenet_v2.preprocess_input(rgb)
+    # MobileNetV2 preprocessing: scale pixels to [-1, 1]
+    processed = (rgb / 127.5) - 1.0
 
     return processed.astype(np.float32)

@@ -146,31 +146,80 @@ export async function submitScreening(
   form.append("capture_site", captureSite);
 
   // The very first screening after a backend restart can be slow (the ML
-  // model loads lazily unless preloaded), so this timeout is generous —
-  // but it guarantees the UI eventually shows an error instead of
-  // spinning forever if the server really is unreachable.
+  // model loads lazily unless preloaded). To avoid leaving the UI stuck if
+  // the upload hangs while the server still finishes processing, we race
+  // the upload against a polling fallback: if the upload hasn't completed
+  // after a short grace period, start polling the patient's screenings and
+  // return the screening if the server finishes first.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 90_000);
+  // Allow longer total timeout for the upload (120s)
+  const timeoutId = setTimeout(() => controller.abort(), 120_000);
 
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}/patients/${patientId}/screenings`, {
+  let fetchResolved = false;
+
+  const fetchPromise = (async () => {
+    const res = await fetch(`${API_URL}/patients/${patientId}/screenings`, {
       method: "POST",
       headers: authHeaders(), // do NOT set Content-Type manually — browser sets multipart boundary
       body: form,
       signal: controller.signal,
     });
+    fetchResolved = true;
+    if (!res.ok) throw new ApiError(await parseErrorDetail(res), res.status);
+    return res.json() as Promise<ScreeningResult>;
+  })();
+
+  const pollStarter = (async () => {
+    // Grace period before starting polling — lets fast uploads finish without extra requests
+    await new Promise((r) => setTimeout(r, 8000));
+    if (fetchResolved) return null as ScreeningResult | null;
+    const pollResult = await pollForScreening(patientId, 60, 2000);
+    if (pollResult) {
+      // If polling found the screening, abort the upload request and return the result
+      try { controller.abort(); } catch {}
+      return pollResult;
+    }
+    return null as ScreeningResult | null;
+  })();
+
+  try {
+    const result = await Promise.race([fetchPromise, pollStarter]);
+    if (result === null) {
+      // pollStarter finished with no result — wait for the upload to finish (or timeout)
+      return await fetchPromise;
+    }
+    return result as ScreeningResult;
   } catch (e) {
+    // If the upload was aborted due to our 120s timeout, try polling once more
     if (e instanceof DOMException && e.name === "AbortError") {
+      const pollResult = await pollForScreening(patientId, 60, 2000);
+      if (pollResult) return pollResult;
       throw new ApiError("Server took too long to respond. It may still be starting up — please try again in a moment.", 0);
     }
     throw e;
   } finally {
     clearTimeout(timeoutId);
   }
+}
 
-  if (!res.ok) throw new ApiError(await parseErrorDetail(res), res.status);
-  return res.json();
+
+async function pollForScreening(patientId: number, attempts = 60, delayMs = 2000): Promise<ScreeningResult | null> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(`${API_URL}/patients/${patientId}/screenings`, { headers: authHeaders() });
+      if (res.ok) {
+        const data: ScreeningResult[] = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          // Assume the most recent screening is first (backend orders by created_at desc)
+          return data[0];
+        }
+      }
+    } catch (e) {
+      // ignore and retry
+    }
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return null;
 }
 
 // Maps backend risk vocabulary (green/yellow/red) to the frontend's RiskLevel type

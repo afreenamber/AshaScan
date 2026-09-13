@@ -975,7 +975,7 @@ function AnalysisScreen({
     let cancelled = false;
 
     if (submittedRef.current) {
-      return () => { [t1, t2, slow].forEach(clearTimeout); };
+      return () => { submittedRef.current = false; [t1, t2, slow].forEach(clearTimeout); };
     }
     submittedRef.current = true;
 
@@ -995,7 +995,7 @@ function AnalysisScreen({
       }
     })();
 
-    return () => { cancelled = true; [t1, t2, slow].forEach(clearTimeout); };
+    return () => { cancelled = true; submittedRef.current = false; [t1, t2, slow].forEach(clearTimeout); };
   }, [patientId, file, lang]);
 
   const steps = lang === "en"
