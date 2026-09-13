@@ -8,8 +8,8 @@ def test_model_filename_matches_requested_asset():
     assert MODEL_FILENAME == "ASHASCAN_final_model.keras"
 
 
-def test_prediction_threshold_is_0_30():
-    assert PREDICTION_THRESHOLD == 0.30
+def test_prediction_threshold_is_0_55():
+    assert PREDICTION_THRESHOLD == 0.55
 
 
 def test_preprocess_image_returns_model_ready_array():
